@@ -225,10 +225,13 @@
         // 定义存储键名
         const KEY_TOTAL = 'class76_total_v2';
         const KEY_COUNT = 'class76_count_v2';
-        const KEY_AUDIO = 'class76_audio_v2'; // 新增：音效开关记忆
+        const KEY_AUDIO = 'class76_audio_v2';
 
         const DEFAULT_TOTAL = 44;
         const DEFAULT_COUNT = 1;
+
+        // 全局音频上下文
+        let audioCtx = null;
 
         // === 1. 初始化：读取数据 ===
         window.onload = () => {
@@ -239,13 +242,70 @@
             document.getElementById('total-input').value = storedTotal ? storedTotal : DEFAULT_TOTAL;
             document.getElementById('count-input').value = storedCount ? storedCount : DEFAULT_COUNT;
 
-            // 恢复音效开关状态（默认开启或读取历史）
-            // 如果本地没有存过（第一次用），默认给 true (checked)
-            const isAudioOn = storedAudio === null ? false : (storedAudio === 'true');
+            const isAudioOn = storedAudio === null ? true : (storedAudio === 'true'); // 默认改为 true
             document.getElementById('audio-toggle').checked = isAudioOn;
+
+            // 尝试预初始化音频（解决首次延迟的关键）
+            document.addEventListener('click', unlockAudio, { once: true });
+            document.addEventListener('touchstart', unlockAudio, { once: true });
         };
 
-        // === 2. 保存功能（包含音效开关） ===
+        // === 2. 音频核心逻辑（优化版） ===
+
+        // 专门用于解锁音频的函数，只运行一次
+        function unlockAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    audioCtx = new AudioContext();
+                    // 播放一个极短的无声声音，强制浏览器/硬件唤醒音频线程
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    gain.gain.value = 0.001; // 极低音量
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(0);
+                    osc.stop(0.001);
+                }
+            }
+            // 如果已存在但挂起，强制恢复
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playBeep(freq, duration, vol) {
+            if (!document.getElementById('audio-toggle').checked) return;
+
+            // 再次确保解锁
+            if (!audioCtx) unlockAudio();
+            if (!audioCtx) return;
+
+            // 再次确保恢复状态
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.type = 'triangle'; // 三角波穿透力好
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                // 简单的包络：瞬间达到音量，然后快速衰减
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+                osc.start(audioCtx.currentTime);
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.error("Audio Error:", e);
+            }
+        }
+
+        // === 3. 保存与交互功能 ===
         function saveSettings() {
             const total = document.getElementById('total-input').value;
             const count = document.getElementById('count-input').value;
@@ -256,10 +316,8 @@
             localStorage.setItem(KEY_AUDIO, audioOn);
         }
 
-        // 给音效开关绑定保存事件
         document.getElementById('audio-toggle').addEventListener('change', saveSettings);
 
-        // === 3. 数值调整 ===
         function adjustValue(inputId, delta) {
             const input = document.getElementById(inputId);
             let val = parseInt(input.value) || 0;
@@ -267,74 +325,25 @@
             if (val < 1) val = 1;
             input.value = val;
             saveSettings();
+            // 用户点击加减号时，顺便预热音频
+            unlockAudio();
         }
 
-        // === 4. 音频核心逻辑（针对 Win11 优化） ===
-        let audioCtx = null;
-
-        function initAudio() {
-            // 仅在支持的浏览器创建
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) return;
-
-            if (!audioCtx) {
-                audioCtx = new AudioContext();
-            }
-
-            // 核心修复：如果是暂停状态，强制恢复
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
-
-        function playBeep(freq, duration, vol) {
-            // 检查开关
-            if (!document.getElementById('audio-toggle').checked) return;
-
-            // 尝试初始化（防漏）
-            initAudio();
-            if (!audioCtx) return;
-
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                // === 关键修改：波形改为 'triangle' (三角波) ===
-                // triangle 比 sine (默认) 更响亮，穿透力更强，适合普通音箱
-                osc.type = 'triangle';
-
-                osc.frequency.value = freq;
-
-                // 音量包络
-                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-
-                osc.start();
-                osc.stop(audioCtx.currentTime + duration);
-            } catch (e) {
-                console.error("Audio Error:", e);
-            }
-        }
-
+        // === 4. 抽奖逻辑 ===
         function startDraw() {
+            // 点击开始按钮时，再次确保音频已解锁
+            unlockAudio();
+
             const btn = document.getElementById('draw-btn');
             const container = document.getElementById('result-container');
             const totalInput = document.getElementById('total-input');
             const countInput = document.getElementById('count-input');
-
-            // 1. 用户点击按钮时，必须立刻触发一次 initAudio
-            // 这是为了骗过浏览器的“自动播放策略”
-            initAudio();
 
             const total = parseInt(totalInput.value) || 1;
             let requested = parseInt(countInput.value) || 1;
 
             if(requested > total) requested = total;
             const count = Math.min(Math.max(requested, 1), total);
-
             countInput.value = count;
             saveSettings();
 
@@ -352,18 +361,27 @@
             }
 
             let rolls = 0;
-            const timer = setInterval(() => {
+            const maxRolls = 15; // 稍微减少次数以加快节奏，或者保持不变
+
+            // 定义单次滚动逻辑
+            const runRoll = () => {
                 cards.forEach(card => {
                     card.innerText = Math.floor(Math.random() * total) + 1;
                 });
-                // 过程音效：频率稍高，音量稍大，三角波
                 playBeep(300, 0.05, 0.1);
                 rolls++;
-                if (rolls >= 15) {
+
+                if (rolls >= maxRolls) {
                     clearInterval(timer);
                     finalize(cards, count, total, btn);
                 }
-            }, 80);
+            };
+
+            // 关键优化：立即执行一次，不要等待 setInterval 的第一个周期
+            runRoll();
+
+            // 然后再启动定时器
+            const timer = setInterval(runRoll, 80);
         }
 
         function finalize(cards, count, total, btn) {
@@ -384,7 +402,6 @@
                 card.classList.add('winner');
             });
 
-            // 结果音效：频率更高，更响亮，三角波
             playBeep(600, 0.4, 0.2);
             btn.disabled = false;
         }

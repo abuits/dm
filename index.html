@@ -222,61 +222,101 @@
     <button id="draw-btn" class="main-btn" onclick="startDraw()">开始</button>
 
     <script>
-        // 定义存储键名和默认值
+        // 定义存储键名
         const KEY_TOTAL = 'class76_total_v2';
         const KEY_COUNT = 'class76_count_v2';
+        const KEY_AUDIO = 'class76_audio_v2'; // 新增：音效开关记忆
+
         const DEFAULT_TOTAL = 44;
         const DEFAULT_COUNT = 1;
 
-        // === 1. 初始化：从 localStorage 读取数据 ===
+        // === 1. 初始化：读取数据 ===
         window.onload = () => {
             const storedTotal = localStorage.getItem(KEY_TOTAL);
             const storedCount = localStorage.getItem(KEY_COUNT);
+            const storedAudio = localStorage.getItem(KEY_AUDIO);
 
-            // 如果有存储值就用存储值，否则用默认值
             document.getElementById('total-input').value = storedTotal ? storedTotal : DEFAULT_TOTAL;
             document.getElementById('count-input').value = storedCount ? storedCount : DEFAULT_COUNT;
+
+            // 恢复音效开关状态（默认开启或读取历史）
+            // 如果本地没有存过（第一次用），默认给 true (checked)
+            const isAudioOn = storedAudio === null ? false : (storedAudio === 'true');
+            document.getElementById('audio-toggle').checked = isAudioOn;
         };
 
-        // === 2. 保存功能：将当前输入框的值写入 localStorage ===
+        // === 2. 保存功能（包含音效开关） ===
         function saveSettings() {
             const total = document.getElementById('total-input').value;
             const count = document.getElementById('count-input').value;
+            const audioOn = document.getElementById('audio-toggle').checked;
+
             localStorage.setItem(KEY_TOTAL, total);
             localStorage.setItem(KEY_COUNT, count);
+            localStorage.setItem(KEY_AUDIO, audioOn);
         }
 
-        // === 3. 数值调整函数（按钮触发） ===
+        // 给音效开关绑定保存事件
+        document.getElementById('audio-toggle').addEventListener('change', saveSettings);
+
+        // === 3. 数值调整 ===
         function adjustValue(inputId, delta) {
             const input = document.getElementById(inputId);
             let val = parseInt(input.value) || 0;
             val += delta;
-            if (val < 1) val = 1; // 最小值限制
+            if (val < 1) val = 1;
             input.value = val;
-
-            // 每次调整后立即保存
             saveSettings();
         }
 
-        // 音频上下文
+        // === 4. 音频核心逻辑（针对 Win11 优化） ===
         let audioCtx = null;
+
         function initAudio() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            // 仅在支持的浏览器创建
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+
+            // 核心修复：如果是暂停状态，强制恢复
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
         }
 
         function playBeep(freq, duration, vol) {
+            // 检查开关
             if (!document.getElementById('audio-toggle').checked) return;
+
+            // 尝试初始化（防漏）
+            initAudio();
+            if (!audioCtx) return;
+
             try {
-                initAudio();
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-                osc.connect(gain); gain.connect(audioCtx.destination);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                // === 关键修改：波形改为 'triangle' (三角波) ===
+                // triangle 比 sine (默认) 更响亮，穿透力更强，适合普通音箱
+                osc.type = 'triangle';
+
                 osc.frequency.value = freq;
+
+                // 音量包络
                 gain.gain.setValueAtTime(vol, audioCtx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-                osc.start(); osc.stop(audioCtx.currentTime + duration);
-            } catch (e) {}
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.error("Audio Error:", e);
+            }
         }
 
         function startDraw() {
@@ -285,16 +325,16 @@
             const totalInput = document.getElementById('total-input');
             const countInput = document.getElementById('count-input');
 
+            // 1. 用户点击按钮时，必须立刻触发一次 initAudio
+            // 这是为了骗过浏览器的“自动播放策略”
             initAudio();
 
             const total = parseInt(totalInput.value) || 1;
             let requested = parseInt(countInput.value) || 1;
 
-            // 逻辑修正：如果抽取的数量大于总人数，自动修正为总人数
             if(requested > total) requested = total;
             const count = Math.min(Math.max(requested, 1), total);
 
-            // 更新输入框并保存（以防自动修正后的值未保存）
             countInput.value = count;
             saveSettings();
 
@@ -316,7 +356,8 @@
                 cards.forEach(card => {
                     card.innerText = Math.floor(Math.random() * total) + 1;
                 });
-                playBeep(200, 0.05, 0.05);
+                // 过程音效：频率稍高，音量稍大，三角波
+                playBeep(300, 0.05, 0.1);
                 rolls++;
                 if (rolls >= 15) {
                     clearInterval(timer);
@@ -327,7 +368,6 @@
 
         function finalize(cards, count, total, btn) {
             const selected = new Set();
-            // 防止死循环：如果 count 等于 total，直接生成序列
             if(count >= total) {
                 for(let i=1; i<=total; i++) selected.add(i);
             } else {
@@ -337,15 +377,15 @@
             }
 
             const finalNums = Array.from(selected);
-            // 如果是多选，稍微排序一下结果，方便查看（可选）
-            // finalNums.sort((a, b) => a - b);
 
             cards.forEach((card, i) => {
                 card.innerText = finalNums[i];
                 card.classList.remove('rolling');
                 card.classList.add('winner');
             });
-            playBeep(440, 0.4, 0.1);
+
+            // 结果音效：频率更高，更响亮，三角波
+            playBeep(600, 0.4, 0.2);
             btn.disabled = false;
         }
     </script>

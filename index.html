@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>七六班点名系统</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --accent: #f59e0b;
+            --bg: #0f172a;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            color: white;
+            overflow: hidden; /* 防止手机端出现滚动条 */
+            touch-action: manipulation; /* 优化移动端点击延迟 */
+        }
+
+        /* 顶部控制栏 - 响应式优化 */
+        .toolbar {
+            position: absolute;
+            top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 10px 15px;
+            border-radius: 20px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 100;
+            max-width: 90vw; /* 限制宽度，防止手机端溢出 */
+        }
+
+        .tool-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        input[type="number"] {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 4px;
+            border-radius: 6px;
+            width: 45px;
+            outline: none;
+            text-align: center;
+        }
+
+        /* 结果展示区 */
+        #result-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-content: center;
+            gap: 10px;
+            margin: 1rem 0;
+            padding-top: 60px; /* 为顶部工具栏预留空间 */
+            min-height: 250px;
+            width: 95vw;
+        }
+
+        /* 基础数字卡片 (手机端默认较小) */
+        .number-card {
+            font-size: 4rem;
+            font-weight: 900;
+            min-width: 100px;
+            height: 100px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* 电脑端或单选模式放大 */
+        @media (min-width: 768px) {
+            .number-card {
+                font-size: 8rem;
+                min-width: 200px;
+                height: 200px;
+            }
+            .multi-mode .number-card {
+                font-size: 3.5rem;
+                min-width: 110px;
+                height: 110px;
+            }
+        }
+
+        /* 手机端多选模式进一步缩小 */
+        @media (max-width: 480px) {
+            .multi-mode .number-card {
+                font-size: 2rem;
+                min-width: 60px;
+                height: 60px;
+                border-radius: 12px;
+            }
+        }
+
+        .rolling { opacity: 0.4; transform: scale(0.8); filter: blur(1px); }
+        .winner {
+            animation: celebrate 0.5s forwards;
+            color: var(--accent);
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+            border-color: var(--accent);
+        }
+
+        @keyframes celebrate {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 15px 50px;
+            font-size: 1.1rem;
+            border-radius: 15px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+            -webkit-tap-highlight-color: transparent; /* 去除移动端点击蓝框 */
+        }
+
+        button:active { transform: scale(0.95); }
+        button:disabled { background: #334155; opacity: 0.7; }
+
+        /* 开关 UI */
+        .switch { width: 34px; height: 18px; position: relative; cursor: pointer; display: inline-block; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #475569; border-radius: 20px; transition: .3s; }
+        .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .3s; }
+        input:checked + .slider { background: var(--primary); }
+        input:checked + .slider:before { transform: translateX(16px); }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <div class="tool-item">
+            <span>总人数:</span>
+            <input type="number" id="total-input" min="1">
+        </div>
+        <div class="tool-item">
+            <span>抽取:</span>
+            <input type="number" id="count-input" value="1" min="1">
+        </div>
+        <div class="tool-item">
+            <span>🔊音效</span>
+            <label class="switch">
+                <input type="checkbox" id="audio-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div id="result-container">
+        <div class="number-card">?</div>
+    </div>
+
+    <button id="draw-btn" onclick="startDraw()">开始点名</button>
+
+    <script>
+        const DEFAULT_TOTAL = 44;
+        window.onload = () => { document.getElementById('total-input').value = DEFAULT_TOTAL; };
+
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playBeep(freq, duration, vol) {
+            if (!document.getElementById('audio-toggle').checked) return;
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.start(); osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        function startDraw() {
+            const btn = document.getElementById('draw-btn');
+            const container = document.getElementById('result-container');
+            const totalInput = document.getElementById('total-input');
+            const countInput = document.getElementById('count-input');
+
+            initAudio();
+
+            const total = parseInt(totalInput.value) || 1;
+            let requested = parseInt(countInput.value) || 1;
+            const count = Math.min(Math.max(requested, 1), total);
+            countInput.value = count;
+
+            btn.disabled = true;
+            container.classList.toggle('multi-mode', count > 1);
+            container.innerHTML = '';
+
+            const cards = [];
+            for(let i=0; i<count; i++) {
+                const card = document.createElement('div');
+                card.className = 'number-card rolling';
+                card.innerText = '?';
+                container.appendChild(card);
+                cards.push(card);
+            }
+
+            let rolls = 0;
+            const timer = setInterval(() => {
+                cards.forEach(card => {
+                    card.innerText = Math.floor(Math.random() * total) + 1;
+                });
+                playBeep(200, 0.05, 0.05);
+                rolls++;
+                if (rolls >= 15) {
+                    clearInterval(timer);
+                    finalize(cards, count, total, btn);
+                }
+            }, 80);
+        }
+
+        function finalize(cards, count, total, btn) {
+            const selected = new Set();
+            while(selected.size < count) {
+                selected.add(Math.floor(Math.random() * total) + 1);
+            }
+            const finalNums = Array.from(selected);
+            cards.forEach((card, i) => {
+                card.innerText = finalNums[i];
+                card.classList.remove('rolling');
+                card.classList.add('winner');
+            });
+            playBeep(440, 0.4, 0.1);
+            btn.disabled = false;
+        }
+    </script>
+</body>
+</html>

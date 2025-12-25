@@ -25,7 +25,6 @@
             touch-action: manipulation;
         }
 
-        /* 顶部控制栏 */
         .toolbar {
             position: absolute;
             top: 15px;
@@ -51,7 +50,6 @@
             white-space: nowrap;
         }
 
-        /* 输入控件组样式 */
         .input-group {
             display: flex;
             align-items: center;
@@ -112,9 +110,9 @@
         }
 
         .number-card {
-            font-size: 4rem;
+            font-size: 3.5rem;
             font-weight: 900;
-            min-width: 100px;
+            min-width: 140px;
             height: 100px;
             background: rgba(255,255,255,0.03);
             border-radius: 20px;
@@ -123,28 +121,16 @@
             justify-content: center;
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             border: 1px solid rgba(255,255,255,0.05);
+            padding: 0 15px;
         }
 
         @media (min-width: 768px) {
-            .number-card {
-                font-size: 8rem;
-                min-width: 200px;
-                height: 200px;
-            }
-            .multi-mode .number-card {
-                font-size: 3.5rem;
-                min-width: 110px;
-                height: 110px;
-            }
+            .number-card { font-size: 6rem; min-width: 260px; height: 180px; }
+            .multi-mode .number-card { font-size: 2.5rem; min-width: 140px; height: 80px; }
         }
 
         @media (max-width: 480px) {
-            .multi-mode .number-card {
-                font-size: 2rem;
-                min-width: 60px;
-                height: 60px;
-                border-radius: 12px;
-            }
+            .multi-mode .number-card { font-size: 1.4rem; min-width: 85px; height: 50px; border-radius: 10px; }
         }
 
         .rolling { opacity: 0.4; transform: scale(0.8); filter: blur(1px); }
@@ -189,15 +175,6 @@
 
     <div class="toolbar">
         <div class="tool-item">
-            <span>总人数</span>
-            <div class="input-group">
-                <div class="mini-btn" onclick="adjustValue('total-input', -1)">-</div>
-                <input type="number" id="total-input" min="1" oninput="saveSettings()">
-                <div class="mini-btn" onclick="adjustValue('total-input', 1)">+</div>
-            </div>
-        </div>
-
-        <div class="tool-item">
             <span>抽取</span>
             <div class="input-group">
                 <div class="mini-btn" onclick="adjustValue('count-input', -1)">-</div>
@@ -222,53 +199,41 @@
     <button id="draw-btn" class="main-btn" onclick="startDraw()">开始</button>
 
     <script>
-        // 定义存储键名
-        const KEY_TOTAL = 'class76_total_v2';
         const KEY_COUNT = 'class76_count_v2';
         const KEY_AUDIO = 'class76_audio_v2';
 
-        const DEFAULT_TOTAL = 44;
-        const DEFAULT_COUNT = 1;
+        // 名单数组
+        // 左诗瑶
+        const NAME_LIST = ["古为","龚雨涵","李梓睿","曾馨语","郭轩伊","李源荣","喻皓辰","肖雨欣","洪熙茹","孟诗玥","古佳琦","刘尹彤","陈金思","王锦诗","肖昱涵","徐玉婷","王雅沁","曾安琪","康美欣","李欣怡","赵熙正","欧阳承毅","梁爽","宋优涵","彭宇涵","徐信杰","徐信雄","郭黄瑞","王亦程","夏培之","李梓琦","马芷涵","范文昊","於欣然","邹景晨","李皆逸","段致宸","邬贝晗","刘晓明","胡希宇","肖灏","杨唐顺","汤紫辰"];
 
-        // 全局音频上下文
         let audioCtx = null;
 
-        // === 1. 初始化：读取数据 ===
         window.onload = () => {
-            const storedTotal = localStorage.getItem(KEY_TOTAL);
             const storedCount = localStorage.getItem(KEY_COUNT);
             const storedAudio = localStorage.getItem(KEY_AUDIO);
 
-            document.getElementById('total-input').value = storedTotal ? storedTotal : DEFAULT_TOTAL;
-            document.getElementById('count-input').value = storedCount ? storedCount : DEFAULT_COUNT;
-
-            const isAudioOn = storedAudio === null ? true : (storedAudio === 'true'); // 默认改为 true
+            document.getElementById('count-input').value = storedCount ? storedCount : 1;
+            const isAudioOn = storedAudio === null ? true : (storedAudio === 'true');
             document.getElementById('audio-toggle').checked = isAudioOn;
 
-            // 尝试预初始化音频（解决首次延迟的关键）
             document.addEventListener('click', unlockAudio, { once: true });
             document.addEventListener('touchstart', unlockAudio, { once: true });
         };
 
-        // === 2. 音频核心逻辑（优化版） ===
-
-        // 专门用于解锁音频的函数，只运行一次
         function unlockAudio() {
             if (!audioCtx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (AudioContext) {
                     audioCtx = new AudioContext();
-                    // 播放一个极短的无声声音，强制浏览器/硬件唤醒音频线程
                     const osc = audioCtx.createOscillator();
                     const gain = audioCtx.createGain();
-                    gain.gain.value = 0.001; // 极低音量
+                    gain.gain.value = 0.001;
                     osc.connect(gain);
                     gain.connect(audioCtx.destination);
                     osc.start(0);
                     osc.stop(0.001);
                 }
             }
-            // 如果已存在但挂起，强制恢复
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
@@ -276,42 +241,27 @@
 
         function playBeep(freq, duration, vol) {
             if (!document.getElementById('audio-toggle').checked) return;
-
-            // 再次确保解锁
             if (!audioCtx) unlockAudio();
             if (!audioCtx) return;
-
-            // 再次确保恢复状态
             if (audioCtx.state === 'suspended') audioCtx.resume();
 
             try {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
-
-                osc.type = 'triangle'; // 三角波穿透力好
+                osc.type = 'triangle';
                 osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-
-                // 简单的包络：瞬间达到音量，然后快速衰减
                 gain.gain.setValueAtTime(vol, audioCtx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-
                 osc.start(audioCtx.currentTime);
                 osc.stop(audioCtx.currentTime + duration);
-            } catch (e) {
-                console.error("Audio Error:", e);
-            }
+            } catch (e) {}
         }
 
-        // === 3. 保存与交互功能 ===
         function saveSettings() {
-            const total = document.getElementById('total-input').value;
             const count = document.getElementById('count-input').value;
             const audioOn = document.getElementById('audio-toggle').checked;
-
-            localStorage.setItem(KEY_TOTAL, total);
             localStorage.setItem(KEY_COUNT, count);
             localStorage.setItem(KEY_AUDIO, audioOn);
         }
@@ -323,27 +273,20 @@
             let val = parseInt(input.value) || 0;
             val += delta;
             if (val < 1) val = 1;
+            if (val > NAME_LIST.length) val = NAME_LIST.length;
             input.value = val;
             saveSettings();
-            // 用户点击加减号时，顺便预热音频
             unlockAudio();
         }
 
-        // === 4. 抽奖逻辑 ===
         function startDraw() {
-            // 点击开始按钮时，再次确保音频已解锁
             unlockAudio();
-
             const btn = document.getElementById('draw-btn');
             const container = document.getElementById('result-container');
-            const totalInput = document.getElementById('total-input');
             const countInput = document.getElementById('count-input');
 
-            const total = parseInt(totalInput.value) || 1;
             let requested = parseInt(countInput.value) || 1;
-
-            if(requested > total) requested = total;
-            const count = Math.min(Math.max(requested, 1), total);
+            const count = Math.min(Math.max(requested, 1), NAME_LIST.length);
             countInput.value = count;
             saveSettings();
 
@@ -355,49 +298,43 @@
             for(let i=0; i<count; i++) {
                 const card = document.createElement('div');
                 card.className = 'number-card rolling';
-                card.innerText = '?';
+                card.innerText = '...';
                 container.appendChild(card);
                 cards.push(card);
             }
 
             let rolls = 0;
-            const maxRolls = 15; // 稍微减少次数以加快节奏，或者保持不变
+            const maxRolls = 15;
 
-            // 定义单次滚动逻辑
             const runRoll = () => {
                 cards.forEach(card => {
-                    card.innerText = Math.floor(Math.random() * total) + 1;
+                    card.innerText = NAME_LIST[Math.floor(Math.random() * NAME_LIST.length)];
                 });
                 playBeep(300, 0.05, 0.1);
                 rolls++;
 
                 if (rolls >= maxRolls) {
                     clearInterval(timer);
-                    finalize(cards, count, total, btn);
+                    finalize(cards, count, btn);
                 }
             };
 
-            // 关键优化：立即执行一次，不要等待 setInterval 的第一个周期
             runRoll();
-
-            // 然后再启动定时器
             const timer = setInterval(runRoll, 80);
         }
 
-        function finalize(cards, count, total, btn) {
-            const selected = new Set();
-            if(count >= total) {
-                for(let i=1; i<=total; i++) selected.add(i);
-            } else {
-                while(selected.size < count) {
-                    selected.add(Math.floor(Math.random() * total) + 1);
-                }
+        function finalize(cards, count, btn) {
+            const selected = [];
+            const tempNames = [...NAME_LIST];
+
+            // 随机抽取不重复名单
+            for(let i=0; i<count; i++) {
+                const idx = Math.floor(Math.random() * tempNames.length);
+                selected.push(tempNames.splice(idx, 1)[0]);
             }
 
-            const finalNums = Array.from(selected);
-
             cards.forEach((card, i) => {
-                card.innerText = finalNums[i];
+                card.innerText = selected[i];
                 card.classList.remove('rolling');
                 card.classList.add('winner');
             });
